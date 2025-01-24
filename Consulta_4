@@ -1,0 +1,51 @@
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SQLContext
+from pyspark.sql.functions import col, max, round
+
+# Configuración para la aplicación Spark para usar YARN como el gestor de recursos
+conf = SparkConf().setAppName("Ranking_Canciones_Por_Genero") \
+                  .setMaster("yarn") \
+                  .set("spark.executor.memory", "4g") \
+                  .set("spark.executor.cores", "2")
+
+# Creación del contexto de Spark con la configuración
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+# Verificación de la conexión
+print("Spark Context creado con éxito, y usando YARN como el gestor de recursos.")
+
+# Ruta al archivo CSV en HDFS
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Carga del dataset como DataFrame
+df = sqlContext.read.csv(data_path, header=True, inferSchema=True)
+
+# Verificación de la estructura del DataFrame
+print("Esquema del DataFrame:")
+df.printSchema()
+
+# Filtración de las columnas necesarias para la consulta
+# Usamos "valence" como proxy de popularidad y seleccionamos las columnas requeridas
+df = df.select("genre", "track_name", "valence")
+
+# Agrupación por género y canción, y cálculo de la popularidad máxima por canción en cada género
+popular_songs_by_genre = df.groupBy("genre", "track_name").agg(
+    round(max("valence"), 2).alias("max_valence")
+)
+
+# Ordena los resultados por género y popularidad (valence) en orden descendente
+popular_songs_by_genre = popular_songs_by_genre.orderBy(
+    col("genre").asc(), col("max_valence").desc()
+)
+
+# Guarda los resultados en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_4.csv"
+popular_songs_by_genre.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Muestra una muestra de los resultados
+print("Ranking de las canciones más populares por género (usando valence como proxy):")
+popular_songs_by_genre.show(10, truncate=False)
+
+# Detiene el contexto de Spark
+sc.stop()
