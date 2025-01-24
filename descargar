@@ -1,0 +1,36 @@
+from pyspark.sql import SparkSession
+import os
+from hdfs3 import HDFileSystem
+
+def download_from_hdfs(hdfs_path, local_path):
+    """
+    Descarga un archivo de HDFS a una ruta local.
+
+    Args:
+        hdfs_path (str): Ruta completa del archivo en HDFS.
+        local_path (str): Ruta local donde se guardará el archivo.
+    """
+
+    # Crear una sesión de Spark
+    spark = SparkSession.builder.appName("DownloadFromHDFS").getOrCreate()
+
+    # Leer el archivo de HDFS como un RDD de bytes
+    rdd = spark.sparkContext.binaryFiles(hdfs_path)
+
+    # Obtener el primer elemento del RDD (asumimos un solo archivo)
+    _, data = rdd.first()
+
+    # Crear el directorio local si no existe
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+    # Guardar los datos en el archivo local
+    with open(local_path, 'wb') as f:
+        f.write(data)
+
+    # Detener la sesión de Spark
+    spark.stop()
+
+# Ejemplo de uso:
+hdfs_path = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_10.csv"
+local_path = "Resultados/consulta_10.csv"
+download_from_hdfs(hdfs_path, local_path)
