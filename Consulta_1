@@ -1,0 +1,52 @@
+# Consulta 1
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SQLContext
+from pyspark.sql.functions import col, count
+
+# Configuraciòn para la aplicación Spark para usar YARN como el gestor de recursos
+conf = SparkConf().setAppName("Distribucion_Generos_Musicales") \
+                  .setMaster("yarn") \
+                  .set("spark.executor.memory", "4g") \
+                  .set("spark.executor.cores", "2")
+
+# Creaciòn del contexto de Spark con la configuración
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+# Verificaciòn la conexión
+print("Spark Context creado con éxito, y usando YARN como el gestor de recursos.")
+
+# Ruta al archivo CSV en HDFS
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Carga del dataset como DataFrame
+df = sqlContext.read.csv(data_path, header=True, inferSchema=True)
+
+# Verificaciòn de la estructura del DataFrame
+print("Esquema del DataFrame:")
+df.printSchema()
+
+# Filtraciòn de las columnas necesarias para la consulta
+df = df.select("genre", "release_date")
+
+# Extracciòn del año de la columna de fecha
+df = df.withColumn("year", col("release_date").cast("int"))
+
+# Agrupaciòn por género y año, y cuenta el número de canciones
+genre_distribution = df.groupBy("genre", "year").agg(
+    count("*").alias("song_count")
+)
+
+# Ordena los resultados por año y género
+genre_distribution = genre_distribution.orderBy(col("year").asc(), col("genre").asc())
+
+# Guarda los resultados en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultado_consulta_1.csv"
+genre_distribution.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Muestra una muestra de los resultados
+print("Distribución de géneros musicales por año:")
+genre_distribution.show(10, truncate=False)
+
+# Detiende el contexto de Spark
+sc.stop()
