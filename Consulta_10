@@ -1,0 +1,37 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, avg, round
+
+# Crear SparkSession
+spark = SparkSession.builder \
+    .appName("Impacto_Canciones") \
+    .master("yarn") \
+    .config("spark.executor.memory", "4g") \
+    .config("spark.executor.cores", "2") \
+    .getOrCreate()
+
+# Ruta del dataset
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Cargar el dataset
+df = spark.read.csv(data_path, header=True, inferSchema=True)
+
+# Seleccionar columnas relevantes
+df = df.select("track_name", "valence", "len", "danceability")
+
+# Agrupar por nombre de canción y calcular métricas promedio
+impact_by_tracks = df.groupBy("track_name").agg(
+    round(avg("valence"), 2).alias("average_valence"),      # Popularidad emocional promedio
+    round(avg("len"), 2).alias("average_length"),           # Duración promedio
+    round(avg("danceability"), 2).alias("average_danceability")  # Facilidad de disfrute promedio
+).orderBy(col("average_valence").desc())
+
+# Guardar en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_10.csv"
+impact_by_tracks.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Mostrar resultados
+print("Impacto de las canciones basado en métricas relacionadas:")
+impact_by_tracks.show(10, truncate=False)
+
+# Detener Spark
+spark.stop()
