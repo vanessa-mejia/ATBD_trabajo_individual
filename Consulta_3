@@ -1,0 +1,51 @@
+#Consulta3
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SQLContext
+from pyspark.sql.functions import col, avg, round
+
+# Configuración para la aplicación Spark para usar YARN como el gestor de recursos
+conf = SparkConf().setAppName("Relacion_Len_Valence_Energy") \
+                  .setMaster("yarn") \
+                  .set("spark.executor.memory", "4g") \
+                  .set("spark.executor.cores", "2")
+
+# Creación del contexto de Spark con la configuración
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+# Verificación de la conexión
+print("Spark Context creado con éxito, y usando YARN como el gestor de recursos.")
+
+# Ruta al archivo CSV en HDFS
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Carga del dataset como DataFrame
+df = sqlContext.read.csv(data_path, header=True, inferSchema=True)
+
+# Verificación de la estructura del DataFrame
+print("Esquema del DataFrame:")
+df.printSchema()
+
+# Filtración de las columnas necesarias para la consulta
+# Usamos "len" como proxy para BPM, "valence" como proxy de positividad y "energy" como medida adicional de intensidad
+df = df.select("len", "valence", "energy")
+
+# Agrupación por "len" y cálculo del promedio de "valence" y "energy"
+bpm_success_analysis = df.groupBy("len").agg(
+    round(avg("valence"), 2).alias("average_valence"),
+    round(avg("energy"), 2).alias("average_energy")
+)
+
+# Ordena los resultados por "len"
+bpm_success_analysis = bpm_success_analysis.orderBy(col("len").asc())
+
+# Guarda los resultados en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_3.csv"
+bpm_success_analysis.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Muestra una muestra de los resultados
+print("Relación entre BPM (proxy: longitud de la canción), positividad promedio y energía promedio:")
+bpm_success_analysis.show(10, truncate=False)
+
+# Detiene el contexto de Spark
+sc.stop()
