@@ -1,0 +1,42 @@
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SQLContext
+from pyspark.sql.functions import col, round, avg
+
+# Configuración de Spark
+conf = SparkConf().setAppName("Canciones_Mas_Populares") \
+                  .setMaster("yarn") \
+                  .set("spark.executor.memory", "4g") \
+                  .set("spark.executor.cores", "2")
+
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+# Ruta del dataset
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Cargar el dataset
+df = sqlContext.read.csv(data_path, header=True, inferSchema=True)
+
+# Seleccionar columnas necesarias
+# Usamos "valence" como proxy para popularidad, junto con "track_name", "energy" y "genre" para análisis adicionales
+df = df.select("track_name", "genre", col("valence").alias("popularity"), "energy")
+
+# Agrupar por canción para calcular métricas promedio (si hay múltiples entradas para una misma canción)
+song_metrics = df.groupBy("track_name", "genre").agg(
+    round(avg("popularity"), 2).alias("average_popularity"),
+    round(avg("energy"), 2).alias("average_energy")
+)
+
+# Ordenar por popularidad promedio descendente y seleccionar las 10 canciones más populares
+most_popular_songs = song_metrics.orderBy(col("average_popularity").desc()).limit(10)
+
+# Guardar en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_7.csv"
+most_popular_songs.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Mostrar resultados
+print("Canciones más populares de todos los tiempos con métricas adicionales:")
+most_popular_songs.show(10, truncate=False)
+
+# Detener Spark
+sc.stop()
