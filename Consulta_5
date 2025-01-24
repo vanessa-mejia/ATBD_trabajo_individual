@@ -1,0 +1,49 @@
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SQLContext
+from pyspark.sql.functions import col, avg, count, round
+
+# Configuración para la aplicación Spark para usar YARN como el gestor de recursos
+conf = SparkConf().setAppName("Tendencias_Popularidad_Por_Año") \
+                  .setMaster("yarn") \
+                  .set("spark.executor.memory", "5g") \
+                  .set("spark.executor.cores", "2")
+
+# Creación del contexto de Spark
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+# Verificación de conexión
+print("Spark Context creado con éxito, y usando YARN como el gestor de recursos.")
+
+# Ruta al archivo CSV en HDFS
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Carga del dataset como DataFrame
+df = sqlContext.read.csv(data_path, header=True, inferSchema=True)
+
+# Verificación de la estructura del DataFrame
+df.printSchema()
+
+# Seleccionar columnas necesarias
+# Usamos "valence" como proxy para popularidad y "energy" como medida secundaria
+df = df.select(col("release_date"), col("valence").alias("popularity"), col("energy"))
+
+# Convertir release_date a tipo año si es una fecha completa
+df = df.withColumn("year", col("release_date").cast("string").substr(1, 4))
+
+# Agrupar por año y calcular métricas adicionales
+popularity_trends_by_year = df.groupBy("year").agg(
+    round(avg("popularity"), 2).alias("average_popularity"),  # Popularidad promedio
+    round(avg("energy"), 2).alias("average_energy"),          # Energía promedio
+    count("*").alias("song_count")                           # Número de canciones
+).orderBy("year")
+
+# Guardar en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_5.csv"
+popularity_trends_by_year.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Mostrar una muestra
+popularity_trends_by_year.show(10, truncate=False)
+
+# Detiene el contexto de Spark
+sc.stop()
