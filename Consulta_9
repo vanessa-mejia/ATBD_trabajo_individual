@@ -1,0 +1,40 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import countDistinct, count, avg, round, col
+
+# Crear SparkSession
+spark = SparkSession.builder \
+    .appName("Diversidad_Generos_Por_Año") \
+    .master("yarn") \
+    .config("spark.executor.memory", "4g") \
+    .config("spark.executor.cores", "2") \
+    .getOrCreate()
+
+# Cargar el dataset desde HDFS
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+df = spark.read.csv(data_path, header=True, inferSchema=True)
+
+# Seleccionar columnas necesarias
+df = df.select("release_date", "genre", "valence", "energy", "len")
+
+# Extraer el año de release_date
+df = df.withColumn("year", col("release_date").cast("string").substr(1, 4))
+
+# Agrupar por año y calcular métricas
+genre_diversity_by_year = df.groupBy("year").agg(
+    countDistinct("genre").alias("unique_genres"),         # Número de géneros únicos
+    count("*").alias("total_songs"),                      # Total de canciones por año
+    round(avg("valence"), 2).alias("average_valence"),     # Valence promedio por año
+    round(avg("energy"), 2).alias("average_energy"),       # Energía promedio por año
+    round(avg("len"), 2).alias("average_length")           # Duración promedio de canciones
+).orderBy("year")
+
+# Guardar en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_9.csv"
+genre_diversity_by_year.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Mostrar resultados
+print("Análisis de la diversidad de géneros por año:")
+genre_diversity_by_year.show(10, truncate=False)
+
+# Detener Spark
+spark.stop()
