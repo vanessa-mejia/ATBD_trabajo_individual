@@ -1,0 +1,52 @@
+#Consulta2
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SQLContext
+from pyspark.sql.functions import col, avg, round
+
+# Configuración de la aplicación Spark para usar YARN como el gestor de recursos
+conf = SparkConf().setAppName("Promedio_Duracion_Canciones_Por_Decada") \
+                  .setMaster("yarn") \
+                  .set("spark.executor.memory", "4g") \
+                  .set("spark.executor.cores", "2")
+
+# Creación del contexto de Spark con la configuración
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+# Verificación de la conexión
+print("Spark Context creado con éxito, y usando YARN como el gestor de recursos.")
+
+# Ruta al archivo CSV en HDFS
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Carga del dataset como DataFrame
+df = sqlContext.read.csv(data_path, header=True, inferSchema=True)
+
+# Verificación de la estructura del DataFrame
+print("Esquema del DataFrame:")
+df.printSchema()
+
+# Filtrar las columnas necesarias para la consulta
+df = df.select("len", "release_date")
+
+# Calcular la década a partir de la fecha de lanzamiento
+df = df.withColumn("decade", (col("release_date").cast("int") / 10).cast("int") * 10)
+
+# Agrupar por década y calcular el promedio de duración redondeado a 2 decimales
+avg_duration_by_decade = df.groupBy("decade").agg(
+    round(avg("len"), 2).alias("average_duration")  # Redondear a 2 decimales
+)
+
+# Ordenar los resultados por década
+avg_duration_by_decade = avg_duration_by_decade.orderBy(col("decade").asc())
+
+# Guardar los resultados en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_2.csv"
+avg_duration_by_decade.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Mostrar una muestra de los resultados
+print("Promedio de duración de las canciones por década:")
+avg_duration_by_decade.show(10, truncate=False)
+
+# Detener el contexto de Spark
+sc.stop()
