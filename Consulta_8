@@ -1,0 +1,40 @@
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SQLContext
+from pyspark.sql.functions import col, avg, count, round
+
+# Configuración para Spark
+conf = SparkConf().setAppName("Distribucion_Popularidad_Por_Duracion") \
+                  .setMaster("yarn") \
+                  .set("spark.executor.memory", "4g") \
+                  .set("spark.executor.cores", "2")
+
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+# Ruta del dataset
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Cargar el dataset
+df = sqlContext.read.csv(data_path, header=True, inferSchema=True)
+
+# Filtrar columnas necesarias
+# Usamos "valence" como proxy para popularidad y seleccionamos "len" como duración
+df = df.select(col("len").alias("duration"), col("valence").alias("popularity"), "energy")
+
+# Agrupar por duración y calcular métricas adicionales
+popularity_by_duration = df.groupBy("duration").agg(
+    round(avg("popularity"), 2).alias("average_popularity"),  # Popularidad promedio
+    round(avg("energy"), 2).alias("average_energy"),          # Energía promedio
+    count("*").alias("song_count")                           # Número de canciones por duración
+).orderBy("duration")
+
+# Guardar en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultados_consulta_8.csv"
+popularity_by_duration.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Mostrar resultados
+print("Distribución de popularidad por duración de la canción:")
+popularity_by_duration.show(10, truncate=False)
+
+# Detener Spark
+sc.stop()
