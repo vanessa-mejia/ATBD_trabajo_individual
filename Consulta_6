@@ -1,0 +1,49 @@
+# Consulta 6
+from pyspark import SparkContext, SparkConf
+from pyspark.sql import SQLContext
+from pyspark.sql.functions import col, count, desc
+
+# Configuración para la aplicación Spark para usar YARN como el gestor de recursos
+conf = SparkConf().setAppName("Top_Artistas_Numero_Exitos") \
+                  .setMaster("yarn") \
+                  .set("spark.executor.memory", "4g") \
+                  .set("spark.executor.cores", "2")
+
+# Creación del contexto de Spark con la configuración
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+# Verificación de la conexión
+print("Spark Context creado con éxito, y usando YARN como el gestor de recursos.")
+
+# Ruta al archivo CSV en HDFS
+data_path = "hdfs://172.31.23.37:9000/user/hadoop/tcc_ceds_music.csv"
+
+# Carga del dataset como DataFrame
+df = sqlContext.read.csv(data_path, header=True, inferSchema=True)
+
+# Verificación de la estructura del DataFrame
+print("Esquema del DataFrame:")
+df.printSchema()
+
+# Filtración de las columnas necesarias para la consulta
+df = df.select("artist_name")
+
+# Agrupación por artista y cuenta el número de canciones
+artist_hits = df.groupBy("artist_name").agg(
+    count("*").alias("number_of_hits")
+)
+
+# Ordena los resultados por número de éxitos en orden descendente y selecciona los 10 principales
+top_artists = artist_hits.orderBy(desc("number_of_hits")).limit(10)
+
+# Guarda los resultados en HDFS
+output_path_hdfs = "hdfs://172.31.23.37:9000/user/hadoop/resultado_consulta_6.csv"
+top_artists.write.csv(output_path_hdfs, header=True, mode="overwrite")
+
+# Muestra una muestra de los resultados
+print("Top 10 de artistas más exitosos por número de éxitos:")
+top_artists.show()
+
+# Detiene el contexto de Spark
+sc.stop()
